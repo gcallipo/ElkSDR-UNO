@@ -7,7 +7,7 @@
    26.03.2023  - first release.
 
 
-   http://ganymedeham.blogspot.com/2017/01/basic-tech-group-mynews-15-elektor.html
+  
 // SDR_ELEKTOR
 // V3 3-3-17
 // Output 4 x 2-30MHz on CLK1, in 10kHz-1MHz steps
