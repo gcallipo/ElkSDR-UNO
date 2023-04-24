@@ -5,6 +5,7 @@
 
    This source file is under General Public License version 3.
    26.03.2023  - first release.
+   24.04.2023  - update tuning and step.
 
 
   
@@ -37,8 +38,9 @@
 #define FREQMIN 50000000
 #define FREQMAX 3000000000
 
-// freq steps 100kHz max, 10kHz step (cHz)
-#define FREQSTEPMAX 100000000
+// freq steps 100kHz max, 10Hz step (cHz)
+#define FREQ1MHZ    100000000
+#define FREQSTEPMAX 10000000
 #define FREQSTEP 1000
 
 // dds object
@@ -47,8 +49,8 @@ Si5351 dds;
 
 // start freq & freqStep (cHz)
 volatile uint64_t freq = 710000000; // 7.1MHz
-volatile uint64_t freqStep = 1000000; // 10kHz
-
+volatile uint64_t freqStep = 100000; // 1kHz
+         uint64_t freqStep_old=0;
 // freq change flag
 volatile bool freqChange;
 
@@ -124,27 +126,37 @@ void LOGGER_debugs(String msg) {
  void UXIF_process_command(){
  
  lcd_key = read_LCD_buttons();  // read the buttons
-
+ delay(100);
  switch (lcd_key)               // depending on which button was pushed, we perform an action
  {
    case btnRIGHT:
      {
       LOGGER_debugs("RIGHT BAND");
      
-      // LOGGER_debugs(idust_status);
+      if (freqStep == FREQ1MHZ){
+          freqStep=freqStep_old;
+          freqStep_old=FREQ1MHZ;
+        }else{
+          freqStep_old=freqStep;
+          freqStep = FREQ1MHZ;
+        }
+         dispfreqStep(10, 1, freqStep); // display freq step
+         delay(500);
      break;
+     
      }
    case btnLEFT:
      {
-      LOGGER_debugs("LEFT STEP");
+           // change slow step
+        LOGGER_debugs("LEFT STEP");
       
-        // change freqStep, 10kHz to 1MHz
-        if (freqStep == FREQSTEPMAX) freqStep = FREQSTEP; // back to 10kHz
+        // change freqStep, 10kHz to 100kHz
+        if (freqStep >= FREQSTEPMAX) freqStep = FREQSTEP; // back to 10Hz
         else freqStep = freqStep * 10; // or increase by x10
         
-        dispFreq(0, 1, freq, 0); // display freq
-        dispfreqStep(10, 1, freqStep); // display freqStep xxxxHz|kHz col 10, row 1
- 
+        dispfreqStep(10, 1, freqStep); // display freq step
+        delay(500);
+
 
      break;
      }
@@ -279,7 +291,8 @@ void setup()
  printLine2((char *)"IK8YFW 2023");
 
  delay(3000);
-
+ 
+ freqOut(freq);
  dispFreq(0, 1, freq, 0); // display freq
  dispfreqStep(10, 1, freqStep); // display freqStep xxxxHz|kHz col 10, row 1
  
