@@ -275,8 +275,7 @@ void setup()
  printBuff2[0] = 0;
 
  // init dds si5351 module, "0" = default 25MHz XTAL, correction
- //dds.init(SI5351_CRYSTAL_LOAD_8PF, 0, CORRE);
- dds.init(SI5351_CRYSTAL_LOAD_10PF, 0, CORRE);
+ dds.init(SI5351_CRYSTAL_LOAD_8PF, 0, CORRE);
  
  // set 8mA output drive
  dds.drive_strength(SI5351_CLK1, SI5351_DRIVE_8MA);
