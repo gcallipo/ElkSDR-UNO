@@ -32,8 +32,7 @@
 
 
 // xtal correction for Elektor DDS
-//#define CORRE 180000
-#define CORRE 220000
+#define CORRE 180000
 
 // min freq 0.5MHz, max 30MHz (cHz)
 #define FREQMIN 50000000
