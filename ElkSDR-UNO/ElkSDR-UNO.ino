@@ -6,15 +6,23 @@
    This source file is under General Public License version 3.
    26.03.2023  - first release.
    24.04.2023  - update tuning and step.
+   24.03.2024  - added external tuning knob with fast mode scan.
 
-
-  
-// SDR_ELEKTOR
+// Pin used to control the staked SDR_ELEKTOR board
 // V3 3-3-17
 // Output 4 x 2-30MHz on CLK1, in 10kHz-1MHz steps
 // Si5351 I2C bus
 // SDA = A4
 // SCL = A5
+
+// Pin used to control The tune and button on FDRobot board
+// Input analog = A0
+
+// Pin used to control The tuning potentiometer
+// (Central pot. )   Input analog = A1
+// (Left side pot. ) + 5V
+// (Right sid pot. ) GND
+// 
  */
 
 /*******************************************************
@@ -30,7 +38,6 @@
 ********************************************************/
 //#define DEBUG_SERIAL
 
-
 // xtal correction for Elektor DDS
 #define CORRE 180000
 
@@ -43,22 +50,30 @@
 #define FREQSTEPMAX 10000000
 #define FREQSTEP 1000
 
+#define FREQSTEP_10Hz      1000
+#define FREQSTEP_100Hz    10000
+#define FREQSTEP_1KHz    100000
+#define FREQSTEP_10K Hz 1000000
+
+// Potentiometer tuning
+#define ANALOG_TUNING A1
+
 // dds object
 Si5351 dds;
 
-
+volatile uint64_t baseTune = 710000000;
 // start freq & freqStep (cHz)
 volatile uint64_t freq = 710000000; // 7.1MHz
-volatile uint64_t freqStep = 100000; // 1kHz
+volatile uint64_t freqStep = 1000000; // 10kHz
          uint64_t freqStep_old=0;
 // freq change flag
 volatile bool freqChange;
+int old_knob;
 
 // Output Freq for Elektor SDR, f (cHz) x 4 on CLK1
 void freqOut(uint64_t f) {
   dds.set_freq(f * 4ULL, SI5351_CLK1);
 }
-
 
 /*******************************************************
 *                   DF1 ROBOT CARD             
@@ -114,6 +129,84 @@ void LOGGER_debugs(String msg) {
    #endif
 }
 
+void LOGGER_debugsi(String msg, int ivalue) {
+   #ifdef DEBUG_SERIAL
+   Serial.println(" ");
+    Serial.print(msg );Serial.print(" ");
+    Serial.println(ivalue, DEC);
+   #endif
+}
+
+// read the tuning potentiometer
+int read_TUNING_potentiometer()
+{
+    doTuning();
+}
+
+//*************************************
+
+// function to read the position of the tuning knob at high precision (Allard, PE1NWL)
+int knob_position() {
+  unsigned long knob = 0;
+  // the knob value normally ranges from 0 through 1023 (10 bit ADC)
+  // in order to increase the precision by a factor 10, we need 10^2 = 100x oversampling
+  for (byte i = 0; i < 100; i++) {
+    knob = knob + analogRead(ANALOG_TUNING); // take 100 readings from the ADC
+  }
+  knob = (knob + 5L) / 10L; // take the average of the 100 readings and multiply the result by 10
+  //now the knob value ranges from 0 through 10230 (10x more precision)
+  return (int)knob;
+}
+
+void doTuning() {
+  
+  int knob = knob_position(); // get the precise tuning knob position
+
+
+  // the knob is fully on the low end, do fast tune: move down and wait for 300 msec
+  // step size is variable: the closer the knob is to the end, the larger the step size
+  if (knob < 100 && freq > FREQMIN) {
+
+    LOGGER_debugsi("1. Knob : ", knob);
+      baseTune = baseTune - (100 - knob) * 1000UL; // fast tune down in max 1 kHz steps
+      freq = constrain(baseTune + knob*10, FREQMIN, FREQMAX);
+      freqChange = true;
+    delay(200);
+  }
+
+  // the knob is full on the high end, do fast tune: move up  and wait for 300 msec
+  // step size is variable: the closer the knob is to the end, the larger the step size
+  else if (knob > 10130 && freq < FREQMAX) {
+    LOGGER_debugsi("2. Knob : ", knob);
+
+      baseTune = baseTune + (knob - 10130) * 1000UL; // fast tune up in max 1 kHz steps
+      freq = constrain(baseTune + knob*10, FREQMIN, FREQMAX);
+      freqChange = true;
+    delay(200);
+  }
+
+  // the tuning knob is at neither extremities, tune the signals as usual
+  else {
+    if (abs(knob - old_knob) > 5) { // improved "flutter fix": only change frequency when the current knob position is more than 4 steps away from the previous position
+      
+      int direction = (knob-old_knob) >= 0? +1: -1;
+
+      //knob = (knob + old_knob) / 2; // tune to the midpoint between current and previous knob reading
+      old_knob = knob;
+      
+      LOGGER_debugsi("3. Knob : ", knob);
+
+       freq = constrain(baseTune + (knob*direction), FREQMIN, FREQMAX);
+      freqChange = true;
+
+      delay(20);
+    }
+  }
+}
+
+
+//**************************************
+
 /******************************************************
  * 
  *   DISPLAY CONTROL UNIT - UX IF
@@ -124,9 +217,17 @@ void LOGGER_debugs(String msg) {
  char c[18] , c2[18], b[11], printBuff1[18], printBuff2[18];
 
  void UXIF_process_command(){
- 
+
+ // try to read from button ... 
  lcd_key = read_LCD_buttons();  // read the buttons
+
+ // if no command, try to decode potentiometer ...
+ if (lcd_key == btnNONE){
+   read_TUNING_potentiometer();
+   return;
+ }
  delay(100);
+  
  switch (lcd_key)               // depending on which button was pushed, we perform an action
  {
    case btnRIGHT:
@@ -264,6 +365,10 @@ void dispMsg(uint8_t c, uint8_t r, char *m)
   lcd.print(m);
 }
 
+ /**
+   Main Setup and Loop
+*/
+
 void setup()
 {
 
@@ -285,7 +390,9 @@ void setup()
  dds.output_enable(SI5351_CLK2, 0);
  
  // Initialize serial
- Serial.begin(9600);
+ #ifdef DEBUG_SERIAL
+    Serial.begin(9600);
+ #endif
 
  printLine1((char *)"ElkSDR-UNO");
  printLine2((char *)"IK8YFW 2023");
@@ -309,6 +416,10 @@ void loop()
     freqChange = false;
     dispFreq(0, 1, freq, 0); // display freq
     dispfreqStep(10, 1, freqStep); // display freqStep xxxxHz|kHz col 10, row 1
+
+    //unsigned long knob = knob_position(); // get the current tuning knob position
+    baseTune = freq;// - (knob);
+
   }
   
 }
