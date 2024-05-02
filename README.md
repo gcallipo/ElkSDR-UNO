@@ -1,7 +1,9 @@
 # ElkSDR-UNO
 This is a simple SDR receiver based on Elektor SDR module and other two modules: Arduino UNO and DF Robot display &amp; 
-buttons for controller. See the pictures and video .
+buttons for controller.
+The SDR_RX_Connection.jpg image and other pictures and video show how to build and connect all the modules.
 
+NOTE:
 The last update add a the new tuning functionality, you need a 50K linear potentiometer that feed into A1 pin
 the analog voltage to use in tuning feature.
 
